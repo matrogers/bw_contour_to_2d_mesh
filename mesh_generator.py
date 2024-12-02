@@ -1,6 +1,6 @@
 import sys
 
-import cv2 as cv
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import triangle.plot
@@ -21,7 +21,7 @@ Program uses the following Python libraries:
 
 #This method searches for holes inside contours, by exposing their parent-child relationship.
 #Rule is: If number of parents is odd, the polygon with this contour as its boundary has a hole
-#The above rules holds for 1px wide polygons, as opencv returns 1 internal and 1 external contours in that case
+#The above rules holds for 1px wide polygons, as openf returns 1 internal and 1 external contours in that case
 def determine_holes(contours, hierarchy,curLevel=0,contIndex=0):
 
     hole = []
@@ -76,69 +76,72 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     #Load the given binary image
-    img = cv.imread(args.image)
+    img = cv2.imread(args.image)
     if img is None:
         print("Image {} not found".format(args.image))
         sys.exit(1)
-    img = cv.cvtColor(img,cv.COLOR_BGR2GRAY)
-    ret, thresh = cv.threshold(img, 127, 255, 0)
+    img = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+    ret, thresh = cv2.threshold(img, 127, 255, 0)
 
     #Apply dilation, erosion if necessary
     if args.refineImage:
-        closing_kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (11, 11))
-        opening_kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (11, 11))
-        cv.morphologyEx(thresh, cv.MORPH_CLOSE, closing_kernel, thresh)
-        cv.morphologyEx(thresh, cv.MORPH_OPEN, opening_kernel, thresh)
+        closing_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+        opening_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+        cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, closing_kernel, thresh)
+        cv2.morphologyEx(thresh, cv2.MORPH_OPEN, opening_kernel, thresh)
 
     #SIMPLE APPROX returns too many points for construction
-    image, contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_TC89_KCOS)
+    image, contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_TC89_KCOS)
 
     #Contour approximation decreases the amount of vertices that would be required to represent it.
     #It gives a shape that is close to a convex hull.THIS DOESN'T GIVE GOOD RESULTS WITH CONCAVE SHAPES
-    # epsilon = 0.05 * cv.arcLength(contours[0], True)
-    # contours[0] = cv.approxPolyDP(contours[0],epsilon,True)
+    # epsilon = 0.05 * cv2.arcLength(contours[0], True)
+    # contours[0] = cv2.approxPolyDP(contours[0],epsilon,True)
 
-    image = cv.cvtColor(image, cv.COLOR_GRAY2BGR)
+    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
     #Centroid of the mesh, but not necessarily on the mesh itself. Therefore not useful
-    # mom = cv.moments(contours[0])
+    # mom = cv2.moments(contours[0])
     # print("{} - {}".format(mom["m10"] / mom["m00"], mom["m01"] / mom["m00"]))
 
-    cv.drawContours(image, contours, -1, (0,255,0), 3)
-    cv.imshow("Contours",image)
-    cv.waitKey(0)
+    cv2.drawContours(image, contours, -1, (0,255,0), 3)
+    cv2.imshow("Contours",image)
+    cv2.waitKey(0)
 
-    v = {"vertices":np.array([]), "segments":np.array([])}
+    v = {"vertices":[], "segments":[]}
     overhead = 0 #Used for maintaining the inner connection of contours
+    contours_new = []
     for i in range(len(contours)):
 
         # Correct the y coordinates of the contours
-        contours[i] = list(map(lambda x: [x[0][0], img.shape[0] - x[0][1]], contours[i]))
+        contours_new.append(list(map(lambda x: [x[0][0], img.shape[0] - x[0][1]], contours[i])))
         contourSegments = []
-        for s in range(len(contours[i])):
-            contourSegments.append([s + overhead,((s+1) % (len(contours[i]))) + overhead])
-        overhead += len(contours[i])
-        v["vertices"] = np.append(v["vertices"],contours[i])
-        v["segments"] = np.append(v["segments"],contourSegments)
+        for s in range(len(contours_new[i])):
+            contourSegments.append([s + overhead,((s+1) % (len(contours_new[i]))) + overhead])
+        overhead += len(contours_new[i])
+        v["vertices"].append(contours_new[i])
+        v["segments"].append(contourSegments)
 
-    print("v {}".format(v))
+    v['vertices'] = v['vertices'][0]
+    v['segments'] = v['segments'][0]
 
     #Determine and instert the holes
-    holes = determine_holes(contours, hierarchy[0])
-    v["holes"] = np.array(holes) if len(holes) != 0 else None
+    holes = determine_holes(contours_new, hierarchy[0])
+    if len(holes) > 0:
+        v["holes"] = holes
 
     #"p" is a mandatory flag, as it says Triangle that the given vertice-segment info forms a PSLG
     #"q" enforces 20 degrees as minimum for all corners in triangles, which means more triangles
     #"Y" forbids usage of Steiner points
-    segments = triangle.triangulate(v,args.triangleCommands)
+    segments = triangle.triangulate(v, 'p')
 
     try:
-        triangle.plot.plot(plt.axes(),
+        triangle.plot(plt.axes(),
                            vertices=segments["vertices"],
                            triangles=segments["triangles"],
                            holes = segments["holes"])
     except KeyError:#Some PSLG's (poly files) contain no holes, therefore visualization cannot be done with it
-        triangle.plot.plot(plt.axes(),
+        triangle.plot(plt.axes(),
                            vertices=segments["vertices"],
                            triangles=segments["triangles"])
 
