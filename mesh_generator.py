@@ -153,7 +153,7 @@ if __name__ == "__main__":
     # "p" is a mandatory flag, as it says Triangle that the given vertice-segment info forms a PSLG
     # "q" enforces 20 degrees as minimum for all corners in triangles, which means more triangles
     # "Y" forbids usage of Steiner points
-    segments = triangle.triangulate(v, "p")
+    segments = triangle.triangulate(v, 'p')
 
     try:
         triangle.plot(
